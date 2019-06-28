@@ -17,7 +17,6 @@ limitations under the License.
 package integration
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/GoogleContainerTools/skaffold/cmd/skaffold/app/flags"
@@ -96,42 +95,4 @@ func TestDeploy(t *testing.T) {
 	testutil.CheckDeepEqual(t, "index.docker.io/library/busybox:1", dep.Spec.Template.Spec.Containers[0].Image)
 
 	skaffold.Delete().InDir("examples/kustomize").InNs(ns.Name).RunOrFail(t)
-}
-
-func TestDeployWithInCorrectConfig(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	if ShouldRunGCPOnlyTests() {
-		t.Skip("skipping test that is not gcp only")
-	}
-
-	ns, _, deleteNs := SetupNamespace(t)
-	defer deleteNs()
-
-	out, err := skaffold.Deploy().InDir("testdata/unstable-deployment").InNs(ns.Name).RunWithOutput(t)
-	if err == nil {
-		t.Error("expected an error to see since the deployment is not stable. However deploy returned success")
-	}
-	if !strings.Contains(string(out), "exceeded its progress deadline") {
-		t.Errorf("expected to see message :exceeded progress deadline error. however saw this error %s", string(out))
-	}
-
-	skaffold.Delete().InDir("testdata/unstable-deployment").InNs(ns.Name).RunOrFail(t)
-}
-
-func TestDeployWithInCorrectConfigWithNoStatusCheck(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	if ShouldRunGCPOnlyTests() {
-		t.Skip("skipping test that is not gcp only")
-	}
-
-	ns, _, deleteNs := SetupNamespace(t)
-	defer deleteNs()
-
-	skaffold.Deploy("--status-check=false").InDir("testdata/unstable-deployment").InNs(ns.Name).RunOrFailOutput(t)
-
-	skaffold.Delete().InDir("testdata/unstable-deployment").InNs(ns.Name).RunOrFail(t)
 }
