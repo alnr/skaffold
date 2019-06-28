@@ -18,6 +18,8 @@ package deploy
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,11 +33,8 @@ import (
 
 var (
 	// TODO: Move this to a flag or global config.
-	// Default deadline set to 10 minutes. This is default value for progressDeadlineInSeconds
-	// See: https://github.com/kubernetes/kubernetes/blob/master/staging/src/k8s.io/api/apps/v1/types.go#L305
-	defaultStatusCheckDeadlineInSeconds int32 = 600
-	// Poll period for checking set to 100 milliseconds
-	defaultPollPeriodInMilliseconds = 100
+	// Default deadline set to 5 minutes. This is default value for progressDeadlineInSeconds
+	defaultPodStatusDeadline = time.Duration(5) * time.Minute
 )
 
 func StatusCheckPods(ctx context.Context, defaultLabeller *DefaultLabeller, runCtx *runcontext.RunContext) error {
@@ -47,7 +46,7 @@ func StatusCheckPods(ctx context.Context, defaultLabeller *DefaultLabeller, runC
 	podInterface := client.CoreV1().Pods(runCtx.Opts.Namespace)
 	pods, err := getPods(podInterface, defaultLabeller)
 	if err != nil {
-		return errors.Wrap(err, "could not fetch deployments")
+		return errors.Wrap(err, "could not fetch pods")
 	}
 
 	wg := sync.WaitGroup{}
@@ -55,17 +54,16 @@ func StatusCheckPods(ctx context.Context, defaultLabeller *DefaultLabeller, runC
 	syncMap := &sync.Map{}
 
 	for _, po := range pods {
-		deadlineDuration := time.Duration(defaultStatusCheckDeadlineInSeconds) * time.Second
 		wg.Add(1)
 		go func(po *v1.Pod) {
 			defer wg.Done()
-			getPodStatus(ctx, podInterface, po, deadlineDuration, syncMap)
+			getPodStatus(ctx, podInterface, po, defaultPodStatusDeadline, syncMap)
 		}(&po)
 	}
 
 	// Wait for all deployment status to be fetched
 	wg.Wait()
-	return nil
+	return podErrors(syncMap)
 }
 
 func getPods(pi corev1.PodInterface, l *DefaultLabeller) ([]v1.Pod, error) {
@@ -73,12 +71,27 @@ func getPods(pi corev1.PodInterface, l *DefaultLabeller) ([]v1.Pod, error) {
 		LabelSelector: l.K8sManagedByLabelKeyValueString(),
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "could not fetch deployments")
+		return nil, err
 	}
-	return pods.Items, nil
+	return pods.Items, err
 }
 
 func getPodStatus(ctx context.Context, pi corev1.PodInterface, po *v1.Pod, deadline time.Duration, syncMap *sync.Map) {
 	err := kubernetesutil.WaitForPodToStabilize(ctx, pi, po.Name, deadline)
 	syncMap.Store(po.Name, err)
+}
+
+func podErrors(m *sync.Map) error {
+	errorStrings := []string{}
+	m.Range(func(k, v interface{}) bool {
+		if _, ok := v.(error); ok {
+			errorStrings = append(errorStrings, fmt.Sprintf("pod %s is not stable", k))
+		}
+		return true
+	})
+
+	if len(errorStrings) == 0 {
+		return nil
+	}
+	return fmt.Errorf("following pods are not stable:\n%s", strings.Join(errorStrings, "\n"))
 }

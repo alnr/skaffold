@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/GoogleContainerTools/skaffold/testutil"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	fakekubeclientset "k8s.io/client-go/kubernetes/fake"
@@ -29,10 +29,10 @@ import (
 func TestGetPods(t *testing.T) {
 	labeller := NewLabeller("")
 	var tests = []struct {
-		description string
-		pods []*v1.Pod
+		description      string
+		pods             []*v1.Pod
 		expectedPodNames map[string]bool
-		shouldErr   bool
+		shouldErr        bool
 	}{
 		{
 			description: "multiple pods in same namespace",
@@ -99,7 +99,6 @@ func TestGetPods(t *testing.T) {
 					},
 				},
 			},
-
 		},
 		{
 			description: "pod in correct namespace  deployed by skaffold but previous version",
@@ -124,10 +123,10 @@ func TestGetPods(t *testing.T) {
 				objs[i] = dep
 			}
 			client := fakekubeclientset.NewSimpleClientset(objs...)
-			var expectedPods []v1.Pod = nil
+			var expectedPods []v1.Pod
 			if test.expectedPodNames != nil {
 				expectedPods = []v1.Pod{}
-				for _, po := range (test.pods) {
+				for _, po := range test.pods {
 					if _, ok := test.expectedPodNames[po.Name]; ok {
 						expectedPods = append(expectedPods, *po)
 					}
@@ -138,4 +137,3 @@ func TestGetPods(t *testing.T) {
 		})
 	}
 }
-
